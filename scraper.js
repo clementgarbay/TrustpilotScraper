@@ -1,18 +1,18 @@
 function startScraperForCategory(urlCategory) {
 
-  var category = urlCategory.split('/')[2];
+  const category = urlCategory.split('/')[2];
 
-  var scraper = {
+  const scraper = {
     iterator: '.category-results .rankings .ranking',
     data: {
       company: {
-        sel: 'h2 a', 
+        sel: 'h2 a',
         method: function($) {
           return $(this).text().split('. ').pop().trim();
         }
       },
       reviewsUrl: {
-        sel: 'h2 a', 
+        sel: 'h2 a',
         method: function($) {
           return 'https://fr.trustpilot.com' + $(this).attr('href').trim();
         }
@@ -20,7 +20,7 @@ function startScraperForCategory(urlCategory) {
       opinions: {
         sel: '.stats .information',
         method: function($) {
-          return $(this).text().split('|')[0].split('avis')[0].trim();
+          return $(this).text().split('|')[0].split('avis')[0].replace(/\s/g, '').trim();
         }
       },
       trustScore: {
@@ -33,21 +33,30 @@ function startScraperForCategory(urlCategory) {
   };
 
   artoo.log.debug(`Starting the scraper for category ${category}...`);
-  var frontpage = artoo.scrape(scraper);
+  const frontpage = artoo.scrape(scraper);
+
+  function hasNext(nextIndex, $page) {
+    const element = $page.find(`.pagination-container .pagination-page[data-page-number="${nextIndex}"]`);
+    return element.attr('href') !== undefined;
+  }
 
   artoo.ajaxSpider(
-    function(i) {
-      var url = `https://fr.trustpilot.com${urlCategory}?page=${i+1}`;
-      artoo.log.debug(`Scraping url ${url}`);
-      return url;
+    function(i, $data) {
+      const nextIndex = i + 1;
+      if (hasNext(nextIndex, !i ? artoo.$(document) : $data)) {
+        const url = `https://fr.trustpilot.com${urlCategory}?page=${nextIndex}`;
+        artoo.log.debug(`Scraping url ${url}`);
+        return url;
+      }
+      return false;
     },
     {
-      limit: 2,
+      // limit: 2,
       throttle: 1000,
       scrape: scraper,
       concat: true,
       done: function(data) {
-        data = frontpage.concat(data);
+        data = data.sort((a, b) => -(parseInt(a.opinions) - parseInt(b.opinions)));
         artoo.log.debug(`Finished retrieving data for category ${category}. Downloading...`);
         artoo.saveCsv(
           data,
@@ -62,10 +71,13 @@ function startScraperForCategory(urlCategory) {
   );
 }
 
-$('.category-menu-list .category-menu-list-item')
-  .each((index, element) => {
-    var urlCategory = $(element).find('a').attr('href');
-    startScraperForCategory(urlCategory);
-  });
+(function() {
+  artoo.$('.category-menu-list .category-menu-list-item')
+    .each((index, element) => {
+      const urlCategory = $(element).find('a').attr('href');
+      startScraperForCategory(urlCategory);
+    });
+})()
+
 
 
